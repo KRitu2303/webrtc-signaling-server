@@ -1,81 +1,49 @@
 const express = require("express");
 const http = require("http");
-const socketIo = require("socket.io");
-const cors = require("cors"); // CORS Middleware
+const { Server } = require("socket.io");
+const cors = require("cors"); // ✅ CORS Middleware
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server, {
+
+// ✅ Enable CORS for your frontend domain
+app.use(
+  cors({
+    origin: "https://blog.grocerymall.in", // ✅ Allowed origin
+    methods: ["GET", "POST"], // ✅ Allowed methods
+    credentials: true,
+  })
+);
+
+const io = new Server(server, {
   cors: {
-    origin: "*", // Allow any frontend to connect
+    origin: "https://blog.grocerymall.in", // ✅ Allow frontend domain
     methods: ["GET", "POST"],
+    credentials: true,
   },
 });
-
-app.use(cors()); // Apply CORS middleware
-
-// Store connected users (Only for 2 users)
-let connectedUsers = {};
 
 io.on("connection", (socket) => {
   console.log("A user connected:", socket.id);
 
-  // Store users
-  if (!connectedUsers.user1) {
-    connectedUsers.user1 = socket.id;
-  } else if (!connectedUsers.user2) {
-    connectedUsers.user2 = socket.id;
-  }
-
-  // Handle Offer (SDP)
-  socket.on("offer", (offer) => {
-    console.log("Offer received from:", socket.id);
-    const targetUser =
-      socket.id === connectedUsers.user1
-        ? connectedUsers.user2
-        : connectedUsers.user1;
-    if (targetUser) {
-      io.to(targetUser).emit("offer", offer);
-    }
+  socket.on("offer", (data) => {
+    io.to(data.target).emit("offer", { offer: data.offer, sender: socket.id });
   });
 
-  // Handle Answer (SDP)
-  socket.on("answer", (answer) => {
-    console.log("Answer received from:", socket.id);
-    const targetUser =
-      socket.id === connectedUsers.user1
-        ? connectedUsers.user2
-        : connectedUsers.user1;
-    if (targetUser) {
-      io.to(targetUser).emit("answer", answer);
-    }
+  socket.on("answer", (data) => {
+    io.to(data.target).emit("answer", { answer: data.answer });
   });
 
-  // Handle ICE Candidates
-  socket.on("ice-candidate", (candidate) => {
-    console.log("ICE Candidate received from:", socket.id);
-    const targetUser =
-      socket.id === connectedUsers.user1
-        ? connectedUsers.user2
-        : connectedUsers.user1;
-    if (targetUser) {
-      io.to(targetUser).emit("ice-candidate", candidate);
-    }
+  socket.on("ice-candidate", (data) => {
+    io.to(data.target).emit("ice-candidate", { candidate: data.candidate });
   });
 
-  // Handle Disconnect
   socket.on("disconnect", () => {
-    console.log("User disconnected:", socket.id);
-    if (connectedUsers.user1 === socket.id) {
-      delete connectedUsers.user1;
-    } else if (connectedUsers.user2 === socket.id) {
-      delete connectedUsers.user2;
-    }
+    console.log("A user disconnected:", socket.id);
   });
 });
 
-// Start Server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Signaling server is running on port ${PORT}`);
+  console.log(`Server is running on port ${PORT}`);
 });
